@@ -189,7 +189,8 @@ class MyAsset(AssetFactory):
         )
         bpy.context.collection.objects.link(branch_obj)
         
-        
+        set_background()
+        set_eevee_bloom()
         surface.add_material(branch_obj, my_shader, input_kwargs=dict(params=self.params))
         return branch_obj
     
@@ -205,20 +206,23 @@ def set_eevee_bloom():
     bpy.context.scene.eevee.bloom_clamp = 0.5
 
 def set_background():
-    world = bpy.context.scene.world
+    world = bpy.data.worlds.new("New World")
+
     world.use_nodes = True
     nodes = world.node_tree.nodes
+    nodes.clear()
 
-    bg_node = nodes.new(Nodes.Background)
+    bg_node = nodes.new('ShaderNodeBackground')
 
     env_texture = nodes.new('ShaderNodeTexEnvironment')
     env_texture.image = bpy.data.images.load('kloppenheim_02_puresky_8k.hdr')
 
-    output_node = nodes.new(type='ShaderNodeOutputWorld')
+    output_node = nodes.new('ShaderNodeOutputWorld')
 
     links = world.node_tree.links
     links.new(bg_node.outputs['Background'], output_node.inputs['Surface'])
     links.new(env_texture.outputs['Color'], bg_node.inputs['Color'])
+    bpy.context.scene.world = world
     
 
 @gin.configurable
@@ -249,11 +253,11 @@ def iter_overrides(ranges):
 def create_param_demo(args, seed):
 
     override_ranges = {
-        'distance': np.linspace(3.0, 10.0, num=3),  
-        'starting_radius': np.linspace(0.005, 0.02, num=3),
-        'emission_strength': np.linspace(0, 10, num=3),
-        'sun_elevation': np.linspace(0, np.pi * 2, num=3),
-        'branch_angle': np.linspace(35, 55, num=10),
+        'distance': np.linspace(3.0, 7.0, num=10),  
+        'starting_radius': np.linspace(0.01, 0.05, num=10),
+        'emission_strength': np.linspace(0, 20, num=10),
+        'sun_elevation': np.linspace(0, np.pi * 2, num=10),
+        'branch_angle': np.linspace(30, 55, num=10),
         'geometry_mode': np.linspace(0, 3, num=3, dtype = int)
     }
     for i, overrides in enumerate(iter_overrides(override_ranges)):
