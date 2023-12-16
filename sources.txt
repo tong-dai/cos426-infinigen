@@ -1,0 +1,14 @@
+
+https://www.cs.rpi.edu/~cutler/classes/advancedgraphics/S17/final_projects/sam_ian.pdf
+
+https://docs.blender.org/api/current/mathutils.html#mathutils.Matrix
+
+https://youtu.be/hpISOv7jLUI?si=cOt83vv2m7d_FJMU
+
+https://www.youtube.com/watch?v=kqeFNiJYYs0
+
+https://blender.stackexchange.com/questions/47049/unable-to-link-2-nodes-to-mixshader-at-once-python
+
+https://blenderartists.org/t/activate-bloom-pass-with-python/1311094/2
+
+https://blender.stackexchange.com/questions/414/how-to-use-bmesh-to-add-verts-faces-and-edges-to-existing-geometry

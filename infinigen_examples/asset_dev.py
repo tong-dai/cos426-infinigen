@@ -35,6 +35,7 @@ from infinigen.core import execute_tasks, surface, init
 logging.basicConfig(level=logging.INFO)
 
 MIN_PROBABILITY = 0.1
+MODES = ['Backfacing', 'Incoming', 'Tangent']
 
 class Branch:
     def __init__(self, start, direction, distance, starting_radius,
@@ -110,7 +111,7 @@ def branch_geometry(bm, branch):
         handle_branching(bm, branch, next)
         last = next
 
-def create_branch_object(distance, starting_radius):
+def create_branch_object(distance, starting_radius, branch_angle):
     start = mathutils.Vector((0, 0, 0))
     direction = mathutils.Vector((0, 0, -1))
     dist = distance
@@ -120,7 +121,7 @@ def create_branch_object(distance, starting_radius):
     mean_branch_length = 1.1
     max_segment_angle = np.radians(40)
     mean_segment_length = 0.08
-    max_branch_angle = np.radians(65)
+    max_branch_angle = np.radians(branch_angle)
     rotation_normal = mathutils.Vector((0, 0, 1))
 
     bm = bmesh.new()
@@ -140,17 +141,15 @@ def my_shader(nw: NodeWrangler, params: dict):
     color1 = (np.random.uniform(0.1, 0.4), np.random.uniform(0.1, 0.3), np.random.uniform(0.1, 1), 1)
     color2 = (np.random.uniform(0.1, 1), np.random.uniform(0.1, 0.2), np.random.uniform(0.1, 0.5), 1)
 
-    air_density = np.random.uniform(1, 10)
-
     geometry = nw.new_node(Nodes.NewGeometry)
     
-    color_ramp = nw.new_node(Nodes.ColorRamp, input_kwargs={'Fac': geometry.outputs[params['geometry_mode']]})
+    color_ramp = nw.new_node(Nodes.ColorRamp, input_kwargs={'Fac': geometry.outputs[MODES[params['geometry_mode_idx']]]})
     color_ramp.color_ramp.elements[0].color = color1
     color_ramp.color_ramp.elements[1].color = color2
     
     emission = nw.new_node(Nodes.Emission, input_kwargs={'Color': color_ramp, 'Strength': params['emission_strength']})
     
-    sky_texture = nw.new_node(Nodes.SkyTexture, attrs={'sky_type': "NISHITA", 'sun_elevation': params['sun_elevation'], 'air_density': air_density})
+    sky_texture = nw.new_node(Nodes.SkyTexture, attrs={'sky_type': "NISHITA", 'sun_elevation': params['sun_elevation'], 'air_density': params['air_density']})
 
     mix_shader = nw.new_node(Nodes.MixShader)
     nw.links.new(mix_shader.inputs[1], emission.outputs[0])
@@ -172,21 +171,24 @@ class MyAsset(AssetFactory):
                 self.params.update(overrides)
 
     def sample_params(self):
-        modes = ['Backfacing', 'Incoming', 'Tangent']
         return {
             'distance': np.random.uniform(7.0, 25.0),  
             'starting_radius': np.random.uniform(0.01, 0.1),
+            'branch_angle': np.random.uniform(40, 80),
             'emission_strength': np.random.uniform(0, 10),
             'sun_elevation': np.random.uniform(0, np.pi * 2),
-            'geometry_mode': modes[np.random.randint(0, 3)],
+            'air_density': np.random.uniform(1, 10),
+            'geometry_mode_idx': np.random.randint(0, 3)
         }
 
     def create_asset(self, **_):
         branch_obj = create_branch_object(
             distance=self.params['distance'],
             starting_radius=self.params['starting_radius'],
+            branch_angle=self.params['branch_angle']
         )
         bpy.context.collection.objects.link(branch_obj)
+        
         
         surface.add_material(branch_obj, my_shader, input_kwargs=dict(params=self.params))
         return branch_obj
@@ -199,8 +201,24 @@ def set_eevee_bloom():
     bpy.context.scene.eevee.bloom_knee = 0.5
     bpy.context.scene.eevee.bloom_radius = 6.5
     bpy.context.scene.eevee.bloom_color = (1, 1, 1)
-    bpy.context.scene.eevee.bloom_intensity = 0.6
+    bpy.context.scene.eevee.bloom_intensity = 0.75
     bpy.context.scene.eevee.bloom_clamp = 0.5
+
+def set_background():
+    world = bpy.context.scene.world
+    world.use_nodes = True
+    nodes = world.node_tree.nodes
+
+    bg_node = nodes.new(Nodes.Background)
+
+    env_texture = nodes.new('ShaderNodeTexEnvironment')
+    env_texture.image = bpy.data.images.load('kloppenheim_02_puresky_8k.hdr')
+
+    output_node = nodes.new(type='ShaderNodeOutputWorld')
+
+    links = world.node_tree.links
+    links.new(bg_node.outputs['Background'], output_node.inputs['Surface'])
+    links.new(env_texture.outputs['Color'], bg_node.inputs['Color'])
     
 
 @gin.configurable
@@ -208,10 +226,11 @@ def compose_scene(output_folder, scene_seed, overrides=None, **params):
     sky_lighting.add_lighting()
 
     cam = spawn_camera()
-    cam.location = (7, 7, 3.5)
-    cam.rotation_euler = np.deg2rad((70, 0, 135))
+    cam.location = (20, -12, 7)
+    cam.rotation_euler = np.deg2rad((65, 5, 50))
     set_active_camera(cam)
     set_eevee_bloom()
+    set_background()
 
     factory = MyAsset(factory_seed=np.random.randint(0, 1e7))
     if overrides is not None:
@@ -229,13 +248,13 @@ def iter_overrides(ranges):
 
 def create_param_demo(args, seed):
 
-    modes = ['Backfacing', 'Incoming', 'Tangent']
     override_ranges = {
-        'distance': np.linspace(7.0, 25.0, num=3),  
-        'starting_radius': np.linspace(0.01, 0.1, num=3),
+        'distance': np.linspace(3.0, 10.0, num=3),  
+        'starting_radius': np.linspace(0.005, 0.02, num=3),
         'emission_strength': np.linspace(0, 10, num=3),
         'sun_elevation': np.linspace(0, np.pi * 2, num=3),
-        'geometry_mode': modes
+        'branch_angle': np.linspace(35, 55, num=10),
+        'geometry_mode': np.linspace(0, 3, num=3, dtype = int)
     }
     for i, overrides in enumerate(iter_overrides(override_ranges)):
         butil.clear_scene()
